@@ -18,7 +18,11 @@ registerTool(
     },
   },
   async (args: { path: string }) => {
-    const files = await readdir(args.path);
-    return files.join("\n");
+    try {
+      const files = await readdir(args.path);
+      return files.join("\n");
+    } catch {
+      return `Error: directory not found at path "${args.path}"`;
+    }
   },
 );

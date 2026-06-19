@@ -16,5 +16,11 @@ registerTool(
       },
     },
   },
-  async (args: { path: string }) => Bun.file(args.path).text(),
+  async (args: { path: string }) => {
+    try {
+      return await Bun.file(args.path).text();
+    } catch {
+      return `Error: file not found at path "${args.path}"`;
+    }
+  },
 );

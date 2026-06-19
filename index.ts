@@ -1,5 +1,5 @@
 import * as readline from "node:readline";
-import { runLoop } from "./src/agent/agent-loop";
+import { pipeline } from "./src/agent/pipeline";
 import { systemPrompt } from "./src/agent/system-prompt";
 import type { Message } from "./src/types/message";
 
@@ -10,12 +10,7 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 function prompt() {
   rl.question("you: ", async (input) => {
     if (input.trim() === "exit") { rl.close(); return; }
-
-    await runLoop(history, input);
-
-    const last = history.at(-1);
-    if (last?.role === "assistant") console.log("agent:", last.content);
-
+    await pipeline(history, input);
     prompt();
   });
 }
