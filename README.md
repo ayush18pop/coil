@@ -23,7 +23,7 @@ Most coding agents are black boxes. `coil` is the opposite: a complete agent loo
 
 It runs against **any OpenAI-compatible API** (Ollama, OpenRouter, or your own), keeps your chats in a local SQLite database, and ships a clean terminal UI.
 
-The north star: a runtime for **verified, self-correcting agent loops** — loops that don't stop until an objective check passes. See the [roadmap](#roadmap).
+The north star: a runtime for **verified, self-correcting agent loops** — loops that don't stop until an objective check passes. This direction is grounded in the LLM-verifiability research; see [the plan](#the-plan-grounded-in-research) and the [roadmap](#roadmap).
 
 ## Features
 
@@ -64,15 +64,15 @@ LLM_MODEL=anthropic/claude-sonnet-4-5
 
 ## Tools
 
-| Tool             | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| `read_file`      | Read the contents of a file                      |
-| `write_file`     | Write or overwrite a file                        |
-| `list_directory` | List files and folders in a directory            |
-| `grep_search`    | Search file contents for a regex (ripgrep/grep)  |
-| `find_files`     | Find files by glob pattern                        |
-| `run_command`    | Run a shell command                              |
-| `web_search`     | Search the web (Tavily)                          |
+| Tool             | Description                                     |
+| ---------------- | ----------------------------------------------- |
+| `read_file`      | Read the contents of a file                     |
+| `write_file`     | Write or overwrite a file                       |
+| `list_directory` | List files and folders in a directory           |
+| `grep_search`    | Search file contents for a regex (ripgrep/grep) |
+| `find_files`     | Find files by glob pattern                      |
+| `run_command`    | Run a shell command                             |
+| `web_search`     | Search the web (Tavily)                         |
 
 Adding a tool is two steps — create the file and register it. The loop picks it up automatically:
 
@@ -81,19 +81,28 @@ import { registerTool } from "../registry";
 
 registerTool(
   "my_tool",
-  { type: "function", function: { name: "my_tool", description: "...", parameters: { /* ... */ } } },
+  {
+    type: "function",
+    function: {
+      name: "my_tool",
+      description: "...",
+      parameters: {
+        /* ... */
+      },
+    },
+  },
   async (args: { input: string }) => "result",
 );
 ```
 
 ## TUI commands
 
-| Command        | Action                          |
-| -------------- | ------------------------------- |
-| `/new`         | Start a fresh chat              |
-| `/list`        | List saved chats                |
-| `/resume <id>` | Resume a past chat              |
-| `/help`        | Show commands                   |
+| Command        | Action             |
+| -------------- | ------------------ |
+| `/new`         | Start a fresh chat |
+| `/list`        | List saved chats   |
+| `/resume <id>` | Resume a past chat |
+| `/help`        | Show commands      |
 
 ## Architecture
 
@@ -120,9 +129,29 @@ src/
 
 The loop is intentionally tiny: call the model with the conversation and tool schemas, execute any tool calls it returns, append the results, and repeat until it answers with plain text.
 
+## The plan, grounded in research
+
+`coil`'s direction isn't a hunch — it follows what the research on **LLM verifiability** actually shows.
+
+An LLM's raw output can't be trusted by default. There are three ways to fix that, and good systems layer all three:
+
+| Lever       | What it means                                                          | What coil does with it                                                                     |
+| ----------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Prevent** | Make invalid output impossible while generating (constrained decoding) | Constrain tool-call JSON so it's valid by construction — fewer malformed calls, no retries |
+| **Detect**  | Check output with a _separate_, objective judge                        | The `verify` step: an objective command (`exit 0`), never the model grading itself         |
+| **Correct** | Loop on real feedback to fix mistakes                                  | The agent loop feeds tool/execution errors back so the model self-corrects                 |
+
+The single thread across every paper: **trust an external, objective signal over the generator's own opinion.** That's the entire reason for `coil`'s north star — _no verify, no run_. Concretely, the research shapes the roadmap like this:
+
+- **`verify` must be an objective command, not an LLM self-judgment.** Self-correction without an external signal is unreliable and can make things _worse_ ([When Can LLMs Correct Their Own Mistakes?](https://arxiv.org/abs/2406.01297)). A separate checker — ideally provable ([BEAVER](https://arxiv.org/abs/2512.05439)), at minimum a real test/judge ([Let's Verify Step by Step](https://arxiv.org/abs/2305.20050)) — beats trusting the model.
+- **Execution is the practical verifier.** Running the code is the feedback that makes a fix-loop actually work ([Revisit Self-Debugging](https://arxiv.org/abs/2501.12793)) — the basis for the planned `heal.loop`.
+- **Don't certify success by sampling.** "I tried it and it looked fine" misses the rare, costly failures; an objective check catches them ([BEAVER](https://arxiv.org/abs/2512.05439)).
+- **Constrain structured output.** Tool calls should be valid by construction, and it can be done with no quality or speed cost ([GCD](https://arxiv.org/abs/2305.13971), [DOMINO](https://arxiv.org/abs/2403.06988)).
+
 ## Roadmap
 
 **Now**
+
 - [x] Streaming agent loop with tool calling
 - [x] File / search / shell / web tools
 - [x] Persistent SQLite sessions
@@ -130,6 +159,7 @@ The loop is intentionally tiny: call the model with the conversation and tool sc
 - [x] Retries and graceful tool-error recovery
 
 **Next**
+
 - [ ] `edit_file` — surgical find-and-replace instead of whole-file rewrites
 - [ ] `web_fetch` — open and read a page from search results
 - [ ] Session picker on startup
@@ -137,6 +167,7 @@ The loop is intentionally tiny: call the model with the conversation and tool sc
 - [ ] Per-tool spinners and status
 
 **North star — verified loops**
+
 - [ ] `Loopfile` spec — declare a goal, an objective `verify` command, and a budget
 - [ ] `coil run ./task.loop` — drive the agent until the verifier passes, then stop
 - [ ] Budgets and graceful failure (`no verify, no run`)
